@@ -7,7 +7,9 @@ import { lastTicket, Rate, Session, Tickets, Trip } from '../services/models/ses
 import { AuthService } from '../services/auth/auth.service';
 import { Ticket } from '../services/models/ticket.model';
 import { v4 as uuidv4 } from 'uuid';
-import { SunmiPrinterPlugin } from 'sunmi-printer-capacitor-plugin';
+import EscPosEncoder from 'esc-pos-encoder-ionic';
+import { BluetoothSerial } from '@awesome-cordova-plugins/bluetooth-serial/ngx';
+import { PrinterService } from '../services/printer/printer.service';
 import { DatabaseService } from '../services/local/database.service';
 
 @Component({
@@ -33,6 +35,7 @@ export class HomePage implements OnInit {
   rates: any
   rateSize: any;
   currentTripTickets: any;
+  printer: any
   constructor(
     private sessionService: SessionService,
     private localDB: DatabaseService,
@@ -44,6 +47,8 @@ export class HomePage implements OnInit {
     private toastController: ToastController,
     private actionSheetCtrl: ActionSheetController,
     private loadingController: LoadingController,
+    private printerService: PrinterService,
+    private bluetoothSerial: BluetoothSerial,
   ) {
     this.storage.create();
     this.today = new Date().toLocaleDateString('fr-FR')
@@ -74,6 +79,12 @@ export class HomePage implements OnInit {
         '🚀 ~ HomePage ~ this.storage.get ~ this.currentSession :',
         this.currentSession
       );
+      this.printer = await this.printerService.getPrinter()
+      if (this.printer.length > 0) {
+        this.printer = this.printer[0].name.toString();
+      }else{
+        this.router.navigate(['/print']);
+      }
       // Récupérer le dernier trajet après avoir récupéré la session
       if (this.currentSession) {
         const trips = this.currentSession.trips;
@@ -301,18 +312,55 @@ export class HomePage implements OnInit {
 
   async print(data:any) {
     try {
-      await SunmiPrinterPlugin.printerInit();
-      const textToPrint = `
------- AFTU ${this.device.Reseau.name} ------
-Bus: ${this.device.Vehicule.matricule} - ${this.currentSession?.itinerary.name} N°: ${data.code}
-${this.lastTrip.rising} -> ${this.lastTrip.destination}
-${this.today} à ${data.startTime}
-Tarif: ${data.price} - ${data.zone}
---------- by PassBi -----------\n
-`;
-      await SunmiPrinterPlugin.printText({ text: textToPrint });
-      await SunmiPrinterPlugin.lineWrap({lines:1});
-      await SunmiPrinterPlugin.cutPaper();
+      const encoder = new EscPosEncoder();
+        const result = encoder.initialize();
+        result
+          .codepage('cp936')
+          .align('center')
+          .bold()
+          .line('AFTU ' + this.device.Reseau.name)
+          .line('BUS: ' + this.device.Vehicule.matricule)
+          .align('left')
+          .line('LIGNE: ' + this.currentSession?.itinerary.name + ' ....  N°: ' + data.code)
+          .bold()
+          .line('TRAJET: ' + this.lastTrip.rising + ' --> ' + this.lastTrip.destination)
+          .bold()
+          .line('DATE: ' + this.today + ' .. A ' + data.startTime)
+          .bold()
+          .line(
+              'Tarif ' +
+              data.price +
+              ' - ' +
+              data.zone
+          )
+          .align('center')
+          .bold()
+          .line('-------------------------------')
+          .line('----------by PassBi -----------')
+          .newline()
+          .cut();
+        const resultByte = result.encode();
+        // send byte code into the printer
+        this.bluetoothSerial.connect(this.printer).subscribe(() => {
+          this.bluetoothSerial
+            .write(resultByte)
+            .then(async () => {
+              console.log('Print success');
+              this.bluetoothSerial.clear();
+              this.bluetoothSerial.disconnect();
+            })
+            .catch(async (err) => {
+              console.error(err);
+              const toast = await this.toastController.create({
+                message: "Erreur d'impression",
+                duration: 3000,
+                position: 'top',
+                icon: 'warning',
+                color: 'danger',
+              });
+              toast.present();
+            });
+        });
     } catch (error) {
     }
   }

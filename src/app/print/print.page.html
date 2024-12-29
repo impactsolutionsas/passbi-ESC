@@ -1,0 +1,53 @@
+<ion-header class="ion-no-border" >
+  <ion-toolbar color="danger">
+    <ion-buttons slot="start" >
+      <ion-button>
+        <ion-icon name="closes-outline" size="large"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+
+    <ion-title>
+      <ion-text class="ion-align-items-center">
+        <strong>Cette page est importante</strong>
+      </ion-text>
+    </ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content padding>
+  <br />
+  <ion-grid>
+    <ion-row>
+      <ion-col size="12" class="content-header">
+        <img alt="" src="assets/printer.png" width="85" />
+        <ion-text color="dark">
+          <h4><strong>Configuration de l'imprimante</strong></h4>
+        </ion-text><br />
+      </ion-col>
+    </ion-row>
+    <ion-row>
+      <ion-col size="12">
+        <ion-item fill="outline">
+          <ion-select
+            label="Imprimante"
+            label-placement="floating"
+            (ionChange)="printerInput($event)"
+            placeholder="Choisir une Imprimante"
+            [(ngModel)]="MAC_ADDRESS"
+          >
+            <ion-select-option
+              *ngFor="let item of printerlist"
+              [value]="item.address"
+              >{{item.name}}</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+      </ion-col>
+      <ion-col size="12" *ngIf="showButton === true">
+        <div class="bottom-section">
+          <ion-button (click)="print()">Tester</ion-button><br /><br />
+        </div>
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+</ion-content>

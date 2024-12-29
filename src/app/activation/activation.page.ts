@@ -5,8 +5,11 @@ import { Rate, Session, Trip } from '../services/models/session.model';
 import { Router } from '@angular/router';
 import { Storage } from '@ionic/storage';
 import { AuthService } from '../services/auth/auth.service';
-import { SunmiPrinterPlugin } from 'sunmi-printer-capacitor-plugin';
+import EscPosEncoder from 'esc-pos-encoder-ionic';
+import { BluetoothSerial } from '@awesome-cordova-plugins/bluetooth-serial/ngx';
+import { PrinterService } from '../services/printer/printer.service';
 import { DatabaseService } from '../services/local/database.service';
+import { ToastController } from '@ionic/angular';
 
 @Component({
   selector: 'app-activation',
@@ -23,6 +26,7 @@ export class ActivationPage implements OnInit {
   isPaid: boolean = false;
   supervisor: any
   dailyCode: boolean = false;
+  printer: any
 
   constructor(
     private fb: FormBuilder,
@@ -30,7 +34,10 @@ export class ActivationPage implements OnInit {
     private router: Router,
     private storage: Storage,
     private localDB: DatabaseService,
-    private authService: AuthService
+    private authService: AuthService,
+    private bluetoothSerial: BluetoothSerial,
+    public toastController: ToastController,
+    private printerService: PrinterService
   ) {
     this.codeForm = this.fb.group({
       code: ['', [Validators.required]],
@@ -55,6 +62,12 @@ export class ActivationPage implements OnInit {
         return;
       }
       this.currentSession = session;
+      this.printer = await this.printerService.getPrinter()
+      if (this.printer.length > 0) {
+        this.printer = this.printer[0].name.toString();
+      }else{
+        this.router.navigate(['/print']);
+      }
       this.isPaid = this.currentSession.dayliePaid?.isPaid || false;
       console.log("🚀 ~ ActivationPage ~ awaitthis.storage.get ~ this.isPaid :", this.isPaid )
     });
@@ -93,125 +106,151 @@ export class ActivationPage implements OnInit {
   }
 
   // Print function
-async print(data: any) {
-  try {
-    await SunmiPrinterPlugin.printerInit();
+  async print(data: any) {
+    try {
+      // Initialisation de l'encodeur EscPos
+      const encoder = new EscPosEncoder();
+      const result = encoder.initialize();
+      const currentTime = new Date().toLocaleTimeString('fr-FR');
 
-    // Header Information
-    let textToPrint = `
------- AFTU ${this.device?.Reseau.name} ------
--------------------------------
-OPERATEUR: ${this.device?.Operator.name}
-BUS: ${this.device?.Vehicule.matricule}
-RECEVEUR(SE): ${this.currentSession?.seller}
-CHAUFFEUR: ${this.currentSession?.driver}
--------------------------------
-LIGNE: ${this.currentSession?.itinerary.name}
-DATE: ${this.currentSession?.sellingDate}
-DE: ${this.currentSession?.startTime} A  ${new Date().toLocaleTimeString('fr-FR')}
--------------------------------`;
+      // Construction de l'en-tête
+      let textToPrint = `
+  ------ AFTU ${this.device?.Reseau.name} ------
+  -------------------------------
+  OPERATEUR: ${this.device?.Operator.name}
+  BUS: ${this.device?.Vehicule.matricule}
+  RECEVEUR(SE): ${this.currentSession?.seller}
+  CHAUFFEUR: ${this.currentSession?.driver}
+  -------------------------------
+  LIGNE: ${this.currentSession?.itinerary.name}
+  DATE: ${this.currentSession?.sellingDate}
+  DE: ${this.currentSession?.startTime} A ${currentTime}
+  -------------------------------`;
 
-    // Ticket Information (grouped by rate)
-    textToPrint += '----- TICKETS -----------------\n';
-    if (this.currentSession?.trips && this.currentSession.trips.length > 0) {
-      const ticketSummary: { [price: number]: { count: number; totalRevenue: number } } = {};
+      // Informations sur les tickets (groupées par tarif)
+      textToPrint += '----- TICKETS -----------------\n';
+      if (this.currentSession?.trips && this.currentSession.trips.length > 0) {
+        const ticketSummary: { [price: number]: { count: number; totalRevenue: number } } = {};
+        let totalTicketCount = 0;
+        let totalTicketRevenue = 0;
 
-      // Loop through trips and tickets
-      let totalTicketCount = 0;
-      let totalTicketRevenue = 0;
+        this.currentSession.trips.forEach((trip) => {
+          if (trip.tickets) {
+            trip.tickets.forEach((ticket) => {
+              const price = ticket.price;
+              if (!ticketSummary[price]) {
+                ticketSummary[price] = { count: 0, totalRevenue: 0 };
+              }
+              ticketSummary[price].count += 1;
+              ticketSummary[price].totalRevenue += ticket.price;
+              totalTicketCount += 1;
+              totalTicketRevenue += ticket.price;
+            });
+          }
+        });
 
-      this.currentSession.trips.forEach((trip) => {
-        if (trip.tickets) {
-          trip.tickets.forEach((ticket) => {
-            const price = ticket.price;
-            // Group tickets by price
-            if (!ticketSummary[price]) {
-              ticketSummary[price] = { count: 0, totalRevenue: 0 };
-            }
-            ticketSummary[price].count += 1;
-            ticketSummary[price].totalRevenue += ticket.price;
-            totalTicketCount += 1; // Increment total ticket count
-            totalTicketRevenue += ticket.price; // Add to total revenue
-          });
+        // Résumé des tickets
+        for (const price in ticketSummary) {
+          const summary = ticketSummary[price];
+          textToPrint += `TICKETS ${price} CFA | ${summary.count} | ${summary.totalRevenue} CFA\n`;
         }
-      });
 
-      // Display the grouped tickets summary
-      for (const price in ticketSummary) {
-        const summary = ticketSummary[price];
-        textToPrint += `TICKETS ${price} CFA | ${summary.count} | ${summary.totalRevenue} CFA\n`;
+        textToPrint += `\nTOTAL TICKETS: ${totalTicketCount}\n`;
+        textToPrint += `TOTAL VENTES: ${totalTicketRevenue} CFA\n`;
+      } else {
+        textToPrint += 'Aucun ticket\n';
       }
 
-      // Display total tickets and revenue
-      textToPrint += `\nTOTAL TICKETS: ${totalTicketCount}\n`;
-      textToPrint += `TOTAL VENTES: ${totalTicketRevenue} CFA\n`;
-    } else {
-      textToPrint += 'Aucun ticket\n';
-    }
+      // Informations sur les rotations
+      textToPrint += '\n---- ROTATIONS -----------------\n';
+      textToPrint += `TOTAL: ${this.currentSession?.trajetCount || 0}`;
 
-    // Number of trips
-    textToPrint += '\n---- ROTATIONS -----------------';
-    textToPrint += `TOTAL: ${this.currentSession?.trajetCount || 0}`;
+      // Informations sur les dépenses
+      textToPrint += '\n----- DEPENSES ------------------\n';
+      if (this.currentSession?.fees && this.currentSession.fees.length > 0) {
+        this.currentSession.fees.forEach((fee) => {
+          textToPrint += `${fee.name} | ${fee.price} CFA\n`;
+        });
+      } else {
+        textToPrint += 'Aucune dépense\n';
+      }
 
-    // Expense Information
-    textToPrint += '\n----- DEPENSES ------------------\n';
-    if (this.currentSession?.fees && this.currentSession.fees.length > 0) {
-      this.currentSession.fees.forEach((fee) => {
-        textToPrint += `${fee.name} | ${fee.price} CFA\n`;
+      // Informations sur les locations
+      textToPrint += '-------- LOCATION --------------\n';
+      if (this.currentSession?.rentals && this.currentSession.rentals.length > 0) {
+        this.currentSession.rentals.forEach((rental) => {
+          if (rental.isActivated) {
+            textToPrint += `${rental.companieName} | ${rental.companiePhone} | ${rental.price} CFA\n`;
+          }
+        });
+        textToPrint += `TOTAL LOCATIONS: ${this.currentSession.rentals.length}\n`;
+      } else {
+        textToPrint += 'Aucune location\n';
+      }
+
+      // Informations sur les contrôles
+      textToPrint += '---- CONTROLES --------------\n';
+      if (this.currentSession?.controles && this.currentSession.controles.length > 0) {
+        textToPrint += `TOTAL: ${this.currentSession.controles.length}\n`;
+        this.currentSession.controles.forEach((control) => {
+          textToPrint += `Contrôleur(se): ${control.controllerName}\n`;
+        });
+      } else {
+        textToPrint += 'Aucun contrôle\n';
+      }
+
+      // Calculs et totalisation finale
+      let netToPay = 0;
+      if (this.currentSession) {
+        netToPay = this.currentSession.revenue - this.currentSession.expense;
+      }
+      textToPrint += '----- TOTAL -----------------\n';
+      textToPrint += `TOTAL RECETTES: ${this.currentSession?.revenue} CFA\n`;
+      textToPrint += `TOTAL DEPENSES: ${this.currentSession?.expense} CFA\n`;
+      textToPrint += `NET A VERSER: ${netToPay} CFA\n`;
+
+      // Footer
+      textToPrint += '-------------------------------\n';
+      textToPrint += '          A conserver          \n';
+      textToPrint += '-------------------------------\n';
+
+      // Encodage et envoi du texte à l'imprimante
+      result
+        .codepage('cp936')
+        .align('left')
+        .line(textToPrint)
+        .align('center')
+        .newline()
+        .cut();
+
+      // Encodage des données en bytecode
+      const resultByte = result.encode();
+
+      // Envoi des données à l'imprimante via Bluetooth
+      this.bluetoothSerial.connect(this.printer).subscribe(() => {
+        this.bluetoothSerial
+          .write(resultByte)
+          .then(() => {
+            console.log('Impression réussie');
+            this.bluetoothSerial.clear();
+            this.bluetoothSerial.disconnect();
+          })
+          .catch(async (err) => {
+            console.error(err);
+            const toast = await this.toastController.create({
+              message: "Erreur d'impression",
+              duration: 3000,
+              position: 'top',
+              icon: 'warning',
+              color: 'danger',
+            });
+            toast.present();
+          });
       });
-    } else {
-      textToPrint += 'Aucune dépense\n';
+    } catch (error) {
+      console.error("Erreur lors de l'impression: ", error);
     }
-
-    // Rentals Information
-    textToPrint += '-------- LOCATION --------------\n';
-    if (this.currentSession?.rentals && this.currentSession.rentals.length > 0) {
-      this.currentSession.rentals.forEach((rental) => {
-        if (rental.isActivated) {
-          textToPrint += `${rental.companieName} | ${rental.companiePhone} | ${rental.price} CFA\n`;
-        }
-      });
-      // Total Rentals
-      textToPrint += `TOTAL LOCATIONS: ${this.currentSession.rentals.length}\n`;
-    } else {
-      textToPrint += '\nAucune location\n';
-    }
-
-    // Control Information
-    textToPrint += '---- CONTROLES --------------\n';
-    if (this.currentSession?.controles && this.currentSession.controles.length > 0) {
-      textToPrint += `TOTAL: ${this.currentSession.controles.length}\n`;
-
-      // Print names of controllers
-      this.currentSession.controles.forEach((control) => {
-        textToPrint += `Contrôleur(se): ${control.controllerName}\n`;
-      });
-    } else {
-      textToPrint += 'Aucun contrôle\n';
-    }
-
-    let netToPay = 0;
-    // Total Revenue and Final Calculation
-    if (this.currentSession) {
-      netToPay = this.currentSession.revenue - this.currentSession.expense;
-    }
-    textToPrint += '----- TOTAL -----------------\n';
-    textToPrint += `TOTAL RECETTES: ${this.currentSession?.revenue} CFA\n`;
-    textToPrint += `TOTAL DEPENSES: ${this.currentSession?.expense} CFA\n`;
-    textToPrint += `NET A VERSER: ${netToPay} CFA\n`;
-
-    textToPrint += '-------------------------------\n';
-    textToPrint += '          A conserver          \n';
-    textToPrint += '-------------------------------\n';
-
-    // Printing text using SunmiPrinterPlugin
-    await SunmiPrinterPlugin.printText({ text: textToPrint });
-    await SunmiPrinterPlugin.lineWrap({ lines: 1 });
-    await SunmiPrinterPlugin.cutPaper();
-  } catch (error) {
-    console.error("Erreur lors de l'impression: ", error);
   }
-}
 
 
   // Submission of the form
