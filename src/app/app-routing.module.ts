@@ -20,6 +20,11 @@ const routes: Routes = [
     path: 'session',
     loadChildren: () => import('./session/session.module').then( m => m.SessionPageModule),
     canActivate: [AuthGuard]
+  },
+  {
+    path: 'print',
+    loadChildren: () => import('./print/print.module').then( m => m.PrintPageModule),
+    canActivate: [AuthGuard]
   }
 
 ];

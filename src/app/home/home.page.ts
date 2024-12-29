@@ -389,6 +389,12 @@ export class HomePage implements OnInit {
           },
         },
         {
+          text: 'IMPRIMANTE', // Texte plus court
+          handler: () => {
+            this.router.navigate(['/print']);
+          },
+        },
+        {
           text: 'Annuler',
           role: 'cancel',
           cssClass: 'cancel-button', // Ajouter une classe CSS pour le bouton Annuler

@@ -8,6 +8,7 @@ import { Session, Trip } from '../services/models/session.model';
 import { SessionService } from '../services/session/session.service';
 import { AuthService } from '../services/auth/auth.service';
 import { DayliePaid } from '../services/models/dayliPay.model';
+import { PrinterService } from '../services/printer/printer.service';
 @Component({
   selector: 'app-session',
   templateUrl: './session.page.html',
@@ -24,6 +25,7 @@ export class SessionPage implements OnInit {
   points: any;
   showButton: boolean = false;
   showPoints: boolean = false;
+  printer: any
   constructor(
     private fb: FormBuilder,
     private platform: Platform,
@@ -33,6 +35,7 @@ export class SessionPage implements OnInit {
     public toastController: ToastController,
     private sessionService: SessionService,
     private storage: Storage,
+    private printerService: PrinterService,
     private loadingController: LoadingController
   ) {
     this.storage.create();
@@ -49,7 +52,7 @@ export class SessionPage implements OnInit {
   }
   ionViewWillEnter() {
     this.platform.ready().then(() => {
-      this.storage.get('loggInUser').then((res) => {
+      this.storage.get('loggInUser').then(async (res) => {
         if (res === null) {
           this.router.navigate(['/login']);
         }else{
@@ -57,6 +60,10 @@ export class SessionPage implements OnInit {
           this.device = res
           this.itinerarys = this.device.Reseau.Itinerary
           console.log("🚀 ~ SessionPage ~ this.storage.get ~ this.itinerarys:", this.itinerarys)
+          this.printer = await this.printerService.getPrinter()
+          if (this.printer.length > 0) {
+            this.printer = this.printer[0].name.toString();
+          }
         }
       });
     });
@@ -183,7 +190,11 @@ export class SessionPage implements OnInit {
         await this.sessionService.addSession(newSelling);
         this.sessionForm.reset();
         await loading.dismiss();
-        this.router.navigate(['/tabs']);
+        if (this.printer.length > 0) {
+          this.router.navigate(['/tabs']);
+        }else{
+          this.router.navigate(['/print']);
+        }
       } catch (error) {
         console.log("🚀 ~ SessionPage ~ onSubmit ~ error:", error)
         await loading.dismiss();

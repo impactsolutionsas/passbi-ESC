@@ -121,6 +121,12 @@ export class RepportPage implements OnInit {
           },
         },
         {
+          text: 'IMPRIMANTE', // Texte plus court
+          handler: () => {
+            this.router.navigate(['/print']);
+          },
+        },
+        {
           text: 'DÉPENSES', // Texte plus court
           handler: () => {
             this.router.navigate(['/tabs/fees']);
