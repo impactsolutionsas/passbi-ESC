@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.senpassbi.selling"
+    namespace "com.senpassbi.escselling"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.senpassbi.selling"
+        applicationId "com.senpassbi.escselling"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

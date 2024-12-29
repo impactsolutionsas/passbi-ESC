@@ -1,4 +1,4 @@
-package com.senpassbi.selling;
+package com.senpassbi.escselling;
 
 import com.getcapacitor.BridgeActivity;
 
