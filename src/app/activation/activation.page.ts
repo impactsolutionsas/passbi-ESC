@@ -267,7 +267,6 @@ export class ActivationPage implements OnInit {
         } else if(this.supervisor[0].password == code){
           if (this.dailyCode && this.currentSession.dayliePaid) {
             this.currentSession.dayliePaid.isPaid = true;
-            this.currentSession.dayliePaid.paidMethode = 'CASH'
             this.currentSession.dayliePaid.paidName = this.currentSession.seller;
             this.currentSession.dayliePaid.paidMethode = 'CASH'
             this.currentSession.dayliePaid.paidBy = this.supervisor[0].name;

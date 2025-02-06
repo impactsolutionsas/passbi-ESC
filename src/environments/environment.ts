@@ -10,6 +10,7 @@ export const environment = {
     projectId: "senpassbi",
     storageBucket: "senpassbi.firebasestorage.app",
     messagingSenderId: "481965381123",
+    databaseURL: "https://senpassbi-default-rtdb.europe-west1.firebasedatabase.app",
     appId: "1:481965381123:web:97607046fe2f593635a036"
   },
   supabaseUrl: 'https://zmgowuoojelxbruborsm.supabase.co',

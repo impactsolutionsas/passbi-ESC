@@ -11,6 +11,7 @@ import { environment } from 'src/environments/environment';
 import { provideFirebaseApp, initializeApp } from '@angular/fire/app';
 import { provideFirestore, getFirestore } from '@angular/fire/firestore';
 import { BluetoothSerial } from '@awesome-cordova-plugins/bluetooth-serial/ngx';
+import { provideDatabase, getDatabase } from '@angular/fire/database';
 
 @NgModule({
   declarations: [AppComponent],
@@ -28,6 +29,7 @@ import { BluetoothSerial } from '@awesome-cordova-plugins/bluetooth-serial/ngx';
     BluetoothSerial,
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideFirestore(() => getFirestore()),
+    provideDatabase(() => getDatabase()) // Add Realtime Database
   ],
   bootstrap: [AppComponent],
 })

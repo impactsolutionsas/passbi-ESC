@@ -1,143 +1,136 @@
 import { Injectable } from '@angular/core';
-import { Firestore, collection, query, where, getDocs, doc, setDoc, getDoc } from '@angular/fire/firestore';
+import { Database, ref, get, set, update, query, orderByChild, equalTo, onValue } from '@angular/fire/database';
 import { Session } from '../models/session.model';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class RemoteService {
+  constructor(private database: Database) {}
 
-  constructor(private firestore: Firestore) {}
-
+  /**
+   * Récupère une session en fonction de `deviceId` et de la date du jour.
+   */
   async remoteSessions(deviceId: number): Promise<Session | null> {
     const today = new Date().toLocaleDateString('fr-FR');
-
     try {
-      // Référence à la collection Firestore
-      const sessionsCollection = collection(this.firestore, 'sessions');
+      const sessionsRef = ref(this.database, 'sessions');
+      const sessionsQuery = query(sessionsRef, orderByChild('deviceId'), equalTo(deviceId));
 
-      // Créer une requête pour Firestore
-      const sessionsQuery = query(
-        sessionsCollection,
-        where('deviceId', '==', deviceId),
-        where('sellingDate', '==', today)
-      );
+      // Récupérer les données
+      const snapshot = await get(sessionsQuery);
+      if (snapshot.exists()) {
+        const sessions = snapshot.val();
+        console.log("🚀 ~ RemoteService ~ remoteSessions ~ sessions:", sessions)
 
-      // Exécuter la requête
-      const querySnapshot = await getDocs(sessionsQuery);
+        // Filtrer les sessions pour la date actuelle
+        const filteredSessions = Object.values(sessions).filter(
+          (session: any) => session.sellingDate === today
+        );
+        console.log("🚀 ~ RemoteService ~ remoteSessions ~ filteredSessions:", filteredSessions)
 
-      // Récupérer le premier document correspondant
-      const sessionDoc = querySnapshot.docs[0];
-      if (sessionDoc) {
-        const data = sessionDoc.data() as Session;
-
-        // Vérifier si la session est activée
-        return data;
+        return filteredSessions.length > 0 ? (filteredSessions[0] as Session) : null;
       }
 
       return null;
     } catch (error) {
-      console.error('Erreur lors de la récupération des sessions Firebase :', error);
+      console.error('Erreur lors de la récupération des sessions :', error);
       return null;
+    }
+  }
+
+
+/**
+   * Ajoute ou met à jour une session en ligne.
+   */
+  async onlineAddSession(newSession: Session): Promise<Session> {
+    try {
+      const sessionRef = ref(this.database, `sessions/${newSession.offlineId}`);
+
+      // Récupérer les données existantes
+      const snapshot = await get(sessionRef);
+
+      if (snapshot.exists()) {
+        const existingSession = snapshot.val() as Session;
+        console.log('Session existante trouvée :', existingSession);
+        return existingSession;
+      } else {
+        // Créer une nouvelle session
+        await set(sessionRef, newSession);
+        console.log('Nouvelle session créée :', newSession);
+        return newSession;
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'ajout ou de la mise à jour de la session :', error);
+      throw error;
     }
   }
 
   /**
-   * Ajoute ou met à jour une session en ligne (upsert).
-   * @param newSession La session à ajouter ou mettre à jour.
-   * @returns La session ajoutée ou mise à jour.
+   * Met à jour une session existante ou la crée si elle n'existe pas.
    */
-  async onlineAddSession(newSession: Session): Promise<Session> {
+  async onlineUpdateSession(session: Session): Promise<Session> {
     try {
-      console.log('Starting online update');
-      // Référence au document basé sur "offlineId"
-      const sessionRef = doc(this.firestore, `sessions/${newSession.offlineId}`);
+      const sessionRef = ref(this.database, `sessions/${session.offlineId}`);
 
-      // Vérifier si le document existe
-      const sessionSnapshot = await getDoc(sessionRef);
+      // Récupérer les données existantes
+      const snapshot = await get(sessionRef);
 
-      if (sessionSnapshot.exists()) {
-        // Retourner les données existantes
-        const existingSession = sessionSnapshot.data() as Session;
-        console.log("🚀 ~ SessionService ~ findOrCreateSession ~ found session:", existingSession);
-        return existingSession;
+      if (snapshot.exists()) {
+        console.log('La session existe, mise à jour...');
       } else {
-        // Créer un nouveau document
-        await setDoc(sessionRef, newSession);
-        console.log("🚀 ~ SessionService ~ findOrCreateSession ~ created session:", newSession);
-        return newSession;
+        console.log('La session n\'existe pas, création...');
       }
+
+      // Ajouter ou mettre à jour les données
+      await update(sessionRef, session);
+      console.log('Session mise à jour avec succès :', session);
+      return session;
     } catch (error) {
-      console.error("Erreur lors de la recherche ou création de la session :", error);
+      console.error('Erreur lors de la mise à jour de la session :', error);
       throw error;
     }
   }
-/**
-   * Met à jour ou crée une session en ligne.
-   * @param session La session à mettre à jour ou créer.
-   * @returns La session mise à jour ou créée.
+
+  /**
+   * Ajoute ou met à jour des données dans `selling`.
    */
-async onlineUpdateSession(session: Session): Promise<Session> {
-  try {
-    // Référence au document basé sur "offlineId"
-    const sessionRef = doc(this.firestore, `sessions/${session.offlineId}`);
+  async rtUpdateSession(session: Session): Promise<Session> {
+    try {
+      const sessionRef = ref(this.database, `selling/${session.offlineId}`);
 
-    // Récupérer le document actuel
-    const existingDoc = await getDoc(sessionRef);
+      const data = {
+        seller: session.seller,
+        driver: session.driver,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        lastTicket: session.lastTicket,
+        ticketCount: session.ticketCount,
+        trajetCount: session.trajetCount,
+        solde: session.solde,
+        expense: session.expense,
+        revenue: session.revenue,
+        controlsCount: session.controlsCount,
+        sellingDate: session.sellingDate,
+        isActiveted: session.isActiveted,
+      };
 
-    if (existingDoc.exists()) {
-      console.log('Document exists, updating...');
-    } else {
-      console.log('Document does not exist, creating new...');
+      // Récupérer les données existantes
+      const snapshot = await get(sessionRef);
+
+      if (snapshot.exists()) {
+        console.log('Selling existant trouvé, mise à jour...');
+      } else {
+        console.log('Selling inexistant, création...');
+      }
+
+      // Ajouter ou mettre à jour les données
+      await update(sessionRef, data);
+      console.log('Selling mis à jour avec succès :', session);
+      return session;
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour de selling :', error);
+      throw error;
     }
-
-    // Ajouter ou mettre à jour la session
-    await setDoc(sessionRef, session, { merge: true });
-
-    console.log('Session mise à jour ou créée avec succès :', session);
-    return session;
-  } catch (error) {
-    console.error('Erreur lors de la mise à jour ou création de la session :', error);
-    throw error;
   }
-}
-
-async rtUpdateSession(session: Session): Promise<Session> {
-  try {
-    // Référence au document basé sur "offlineId"
-    const sessionRef = doc(this.firestore, `selling/${session.offlineId}`);
-    let data = {
-      seller: session.seller,
-      driver: session.driver,
-      startTime: session.startTime,
-      endTime: session.endTime,
-      lastTicket: session.lastTicket,
-      ticketCount : session.ticketCount,
-      trajetCount : session.trajetCount,
-      solde : session.solde,
-      expense : session.expense,
-      revenue : session.revenue,
-      controlsCount : session.controlsCount,
-      sellingDate: session.sellingDate,
-      isActiveted: session.isActiveted
-    }
-    // Récupérer le document actuel
-    const existingDoc = await getDoc(sessionRef);
-
-    if (existingDoc.exists()) {
-      console.log('Selling exists, updating...');
-    } else {
-      console.log('Selling does not exist, creating new...');
-    }
-    // Ajouter ou mettre à jour la session
-    await setDoc(sessionRef, data, { merge: true });
-
-    console.log('Session mise à jour ou créée avec succès :', session);
-    return session;
-  } catch (error) {
-    console.error('Erreur lors de la mise à jour ou création de la session :', error);
-    throw error;
-  }
-}
-
 }

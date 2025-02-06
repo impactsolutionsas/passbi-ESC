@@ -58,7 +58,7 @@ export class SessionService {
                 );
                 for (let index = 0; index < sessions.length; index++) {
                   const element = sessions[index];
-                  this.remoteDB.onlineAddSession(element);
+                  this.remoteDB.onlineUpdateSession(element);
                 }
                 if (unsyncedSessions.length > 0) {
                   this._isSyncing = true;
@@ -88,7 +88,7 @@ export class SessionService {
   async syncSessionsToSupabase(sessions: Session[]) {
     for (const session of sessions) {
       try {
-        await this.remoteDB.onlineAddSession(session);
+        await this.remoteDB.onlineUpdateSession(session);
         session.isOnline = true;
         await this.localDB.updateLocalSession(session);
       } catch (error) {

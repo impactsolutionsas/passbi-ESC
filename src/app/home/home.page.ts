@@ -119,6 +119,7 @@ export class HomePage implements OnInit {
     this.sessionService.currentSession$.subscribe((session) => {
       this.currentSession = session;
     });
+
   }
 
 
@@ -171,7 +172,7 @@ export class HomePage implements OnInit {
       this.currentSession.solde = this.currentSession.revenue-this.currentSession.expense
       this.currentSession.lastTicket = lastTick
       this.tripCountBySession = this.currentSession.trips?.length
-      await this.sessionService.localUpdateSession(this.currentSession)
+      await this.sessionService.updateSession(this.currentSession)
       this.print(newTicket)
     }
 
